@@ -1,0 +1,45 @@
+# Etapa de construcción
+FROM golang:1.22-bookworm as build
+
+WORKDIR /app
+
+# Copia los archivos de descripción de dependencias
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Instala Git si es necesario
+RUN apt-get update && apt-get install --no-install-recommends -y git
+
+# Copia todo el código fuente
+COPY . .
+
+# Compila la aplicación
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags '-s -w' -o build/bin/app main.go
+
+# Etapa de producción
+FROM alpine:3.18
+
+# Instalar certificados CA y dependencias necesarias
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+# Copiar el binario compilado
+COPY --from=build /app/build/bin/app .
+
+# Copiar el directorio de migraciones
+COPY --from=build /app/cmd/config/db/migrations /app/cmd/config/db/migrations
+
+# Variables de entorno por defecto
+ENV DB_HOST=34.46.192.12\
+    DB_PORT=3306 \
+    DB_NAME=recruiting_db \
+    DB_USER=juansebastiansanchez \
+    DB_PASSWORD=JuanAdmin123$ \
+    MIGRATIONS_DIR=/app/cmd/config/db/migrations
+
+# Exponer puerto si es necesario
+EXPOSE 8080
+
+# Ejecutar la aplicación
+CMD ["./app"]
